@@ -1,8 +1,8 @@
 # rayui
 
-**1080p virtual resolution, everything is letterboxed**
+**1080p virtual resolution, letterboxed**
 
-*A header-only declarative UI library for raylib. Build interfaces by composing widgets, bind them to reactive `State<T>` values, and let the library handle layout, animation, focus, and input*
+*A header-only declarative UI library for raylib. Build UI's by composing widgets, bind them to reactive `State<T>` values, and let the library handle layout, animation, focus, and input*
 
 **Everything lives in `namespace rayui`. Include `rayui.hpp` and that's it**
 
@@ -665,9 +665,9 @@ int main() {
 
 ## Special notes
 
-- **Letterboxed canvas.** Everything is authored on a 1920x1080 canvas and scaled to the window. All sizes, font sizes, and offsets are in logical units of that canvas.
+- **Addition note about the canvas/letterboxing** Everything is authored on a 1920x1080 canvas and scaled to the window. All sizes, font sizes, and offsets are in logical units of that canvas.
 - **`AUTO_SIZE`** = `-1.0`. Use it to say "size to content".
-- **One font.** All text uses `rayui::font`. Load it once at startup, unload it before `CloseWindow`.
-- **Overlay queue.** Popovers, dropdowns, modals, context menus, tooltips, and toasts all render on top of the whole tree. Only one popup-like widget is open at a time.
-- **Focus navigation.** Tab / Shift+Tab move focus through focusable widgets; Enter and Space activate the focused one. Escape clears focus unless a widget claims it first.
-- **Hotkeys fire after the tree.** They run regardless of focus unless a focused widget explicitly consumes the key that frame (text inputs consume Escape when they blur).
+- **One font** All text uses `rayui::font`. Load it once at startup, unload it before `CloseWindow`.
+- **Overlay queue** Popovers, dropdowns, modals, context menus, tooltips, and toasts all render on top of the whole tree. Only one popup-like widget is open at a time.
+- **Focus navigation** Tab / Shift+Tab move focus through focusable widgets; Enter and Space activate the focused one. Escape clears focus unless a widget claims it first.
+- **Hotkeys fire after the tree** They run regardless of focus unless a focused widget explicitly consumes the key that frame (text inputs consume Escape when they blur).
