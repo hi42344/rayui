@@ -1,0 +1,768 @@
+#include "raylib.h"
+#include "../src/rayui.hpp"
+#include "helpers/exe_path.hpp"
+
+#include <string>
+#include <vector>
+#include <iostream>
+#include <filesystem>
+
+int main() {
+    SetConfigFlags(FLAG_WINDOW_RESIZABLE);
+    InitWindow(1280, 720, "Rayui Example");
+    SetExitKey(KEY_NULL);
+    int monitor = GetCurrentMonitor();
+    SetTargetFPS(GetMonitorRefreshRate(monitor));
+
+    // Load Rajdhani
+    std::filesystem::path path = get_executable_path();
+    path = path.parent_path().parent_path();
+    path = path / "Font" / "Rajdhani" / "Rajdhani-SemiBold.ttf";
+    TraceLog(LOG_INFO, TextFormat("Path = %s\n", path.string().c_str()));
+    const int mapped = 128 * rayui::Internal::mapper.get_dpi_scale();
+    TraceLog(LOG_INFO, TextFormat("Mapped scale = %i", mapped));
+    rayui::font.load(path.string(), mapped);
+
+    // -------- Global hotkeys --------
+    // Registered once, fire regardless of which tab or widget has focus.
+    rayui::hotkey(KEY_S, rayui::HOTKEY_CTRL, []() {
+        rayui::toast("Saved!", { .level = rayui::Toast_Level::Success });
+        });
+    rayui::hotkey(KEY_S, rayui::HOTKEY_CTRL | rayui::HOTKEY_SHIFT, []() {
+        rayui::toast("Save As...", { .level = rayui::Toast_Level::Info });
+        });
+    rayui::hotkey(KEY_O, rayui::HOTKEY_CTRL, []() {
+        rayui::toast("Open file...", { .level = rayui::Toast_Level::Info });
+        });
+    rayui::hotkey(KEY_N, rayui::HOTKEY_CTRL, []() {
+        rayui::toast("New file", { .level = rayui::Toast_Level::Info });
+        });
+    rayui::hotkey(KEY_F1, rayui::HOTKEY_NONE, []() {
+        rayui::toast("Help: F1 pressed", { .level = rayui::Toast_Level::Info });
+        });
+    rayui::hotkey(KEY_F2, rayui::HOTKEY_NONE, []() {
+        rayui::toast("Rename mode", { .level = rayui::Toast_Level::Warning });
+        });
+    rayui::hotkey(KEY_Q, rayui::HOTKEY_CTRL, []() {
+        rayui::toast("Quit shortcut fired (not actually quitting)", { .level = rayui::Toast_Level::Warning });
+        });
+
+    // Reactive state
+    auto page = rayui::make_state(0);
+    auto volume = rayui::make_state(75.0f);
+    auto is_muted = rayui::make_state(false);
+    auto controls_on = rayui::make_state(true);
+    auto mute_label = rayui::make_state(std::string("Mute"));
+    auto name = rayui::make_state(std::string("Player"));
+    auto notes = rayui::make_state(std::string(
+        "This field wraps long lines automatically, grows with its content, and scrolls once it has a fixed height."));
+    auto dark_mode = rayui::make_state(true);
+    auto quality = rayui::make_state(1);
+    auto language = rayui::make_state(0);
+
+    auto likes = rayui::make_state(3);
+    auto view_mode = rayui::make_state(1);
+    auto chip_alpha = rayui::make_state(true);
+    auto chip_beta = rayui::make_state(true);
+    auto chip_gamma = rayui::make_state(true);
+
+    auto show_modal = rayui::make_state(false);
+    auto popover_open = rayui::make_state(false);
+    auto context_choice = rayui::make_state(-1);
+    auto accordion_section = rayui::make_state(0);
+    auto shape_reveal = rayui::make_state(true);
+
+    auto tree_selection = rayui::make_state(std::string("(none)"));
+
+    // New feature state
+    auto quantity = rayui::make_state(1);
+    auto price = rayui::make_state(9.99);
+    auto opacity_val = rayui::make_state(0.75);
+
+    // ForEach demo: a list of items we can add/remove
+    auto items = rayui::make_state(std::vector<std::string>{ "Apple", "Banana", "Cherry" });
+
+    // Polish tab state
+    auto polish_popover = rayui::make_state(false);
+    auto polish_menu = rayui::make_state(-1);
+
+    Image checker_image = GenImageChecked(256, 128, 32, 32, DARKGRAY, LIGHTGRAY);
+    Texture2D checker = LoadTextureFromImage(checker_image);
+    UnloadImage(checker_image);
+
+    std::vector<rayui::Element> tracks;
+    for (int i = 1; i <= 14; ++i) {
+        tracks.push_back(rayui::Label("Track " + std::to_string(i), { .fontSize = 34.0, .color = LIGHTGRAY }));
+    }
+
+    // -------- Audio --------
+    auto audio_page = rayui::VStack({ .spacing = 28.0, .alignment = rayui::Align::Center, .justify = rayui::Align::Center }, {
+        rayui::Label("Audio Settings",{ .fontSize = 72.0, .color = WHITE }),
+
+        rayui::Textbox(name,{ .placeholder = "Profile name", .width = 600.0, .maxLength = 20 })
+            .onSubmit([](const std::string& value) { TraceLog(LOG_INFO, "Submitted: %s", value.c_str()); }),
+
+        rayui::HStack({ .spacing = 20.0, .alignment = rayui::Align::Center },{
+            rayui::Label("Volume:",{ .fontSize = 40.0, .color = LIGHTGRAY }),
+            rayui::Slider(volume, 0.0f, 100.0f,{ .width = 420.0 }),
+            rayui::Label(rayui::fmt("{}%", volume),{ .fontSize = 40.0, .textAlign = rayui::Align::End, .width = 120.0 })
+        }).enabled(controls_on),
+
+        rayui::ProgressBar(volume, 0.0f, 100.0f,{ .width = 600.0 }).enabled(controls_on),
+
+        rayui::Button(mute_label,{ .padding = 24.0 })
+            .onClick([&]() {
+                is_muted.set(!is_muted.get());
+                controls_on.set(!is_muted.get());
+                mute_label.set(is_muted.get() ? "Unmute" : "Mute");
+            }),
+
+        rayui::Cond(is_muted,
+            rayui::Label("Status: MUTED",{ .color = RED }),
+            rayui::Label("Status: ACTIVE",{ .color = GREEN })
+        ),
+
+        rayui::ScrollView({ .width = 600.0, .height = 200.0 },
+            rayui::VStack({ .spacing = 10.0 }, std::move(tracks)))
+        });
+
+    // -------- Notes --------
+    auto notes_page = rayui::VStack({ .spacing = 28.0, .alignment = rayui::Align::Center, .justify = rayui::Align::Center }, {
+        rayui::Label("Notes",{ .fontSize = 56.0, .color = WHITE }),
+
+        rayui::TextField(notes,{ .placeholder = "Write something...", .width = 900.0, .height = 340.0 }),
+
+        rayui::TextDisplay(rayui::fmt("Preview: {}", notes),
+            { .fontSize = 32.0, .color = LIGHTGRAY, .width = 900.0 }),
+
+        rayui::Label(rayui::fmt("{} bytes", static_cast<int>(notes.get().size())),
+            { .fontSize = 28.0, .color = GRAY }),
+
+        rayui::Label(rayui::Text::from_format("{} chars, {} preview bytes",
+                rayui::make_state(static_cast<int>(notes.get().size())),
+                static_cast<int>(notes.get().size())),
+            { .fontSize = 24.0, .color = GRAY })
+        });
+
+    // -------- Widgets --------
+    auto widgets_page = rayui::HStack({ .spacing = 160.0, .alignment = rayui::Align::Start, .justify = rayui::Align::Center }, {
+        rayui::VStack({ .spacing = 28.0 },{
+            rayui::Label("Options",{ .fontSize = 56.0, .color = WHITE }),
+
+            rayui::HStack({ .spacing = 24.0, .alignment = rayui::Align::Center },{
+                rayui::Label("Dark mode",{ .color = LIGHTGRAY }),
+                rayui::Toggle(dark_mode)
+            }),
+
+            rayui::Divider(),
+
+            rayui::Label("Quality",{ .color = LIGHTGRAY }),
+            rayui::RadioGroup(quality,{ "Low", "Medium", "High" }),
+
+            rayui::Label(rayui::fmt("Quality: {}", rayui::fmt("{}", quality)),
+                { .fontSize = 28.0, .color = GRAY })
+        }),
+
+        rayui::VStack({ .spacing = 28.0 },{
+            rayui::Label("Language",{ .fontSize = 56.0, .color = WHITE }),
+
+            rayui::Dropdown(language,{ "English", "Spanish", "French", "German", "Italian", "Portuguese", "Dutch", "Swedish" },
+                { .placeholder = "Pick one", .width = 420.0, .maxVisible = 5 }),
+
+            rayui::Tooltip("Hover tooltips fade in after half a second",
+                rayui::Button("Hover me",{ .padding = 24.0 })),
+
+            rayui::Image(checker,{ .fit = rayui::Fit::Cover, .width = 420.0, .height = 200.0 })
+        })
+        });
+
+    // -------- Extras --------
+    auto extras_page = rayui::ScrollView({ .width = 1400.0, .height = 860.0 },
+        rayui::VStack({ .spacing = 40.0, .alignment = rayui::Align::Center }, {
+
+            rayui::Label("Extras",{ .fontSize = 72.0, .color = WHITE }),
+
+            rayui::Label("Badges",{ .fontSize = 40.0, .color = LIGHTGRAY }),
+            rayui::HStack({ .spacing = 12.0, .alignment = rayui::Align::Center },{
+                rayui::Label("v1.0.0",{ .fontSize = 34.0, .color = LIGHTGRAY }),
+                rayui::Badge("NEW"),
+                rayui::Badge("beta",{ .textColor = BLACK, .backgroundColor = ORANGE }),
+                rayui::Badge("stable",{ .backgroundColor = DARKGREEN })
+            }),
+
+            rayui::Divider(),
+
+            rayui::Label("Segmented control",{ .fontSize = 40.0, .color = LIGHTGRAY }),
+            rayui::SegmentedControl(view_mode,{ "List", "Grid", "Kanban" },
+                { .fontSize = 34.0, .width = 720.0 }),
+            rayui::Label(rayui::fmt("Selected view: {}", view_mode),
+                { .fontSize = 28.0, .color = GRAY }),
+
+            rayui::Divider(),
+
+            rayui::Label("Chips",{ .fontSize = 40.0, .color = LIGHTGRAY }),
+            rayui::HStack({ .spacing = 12.0, .alignment = rayui::Align::Center },{
+                rayui::Chip("alpha",{ .fontSize = 32.0 })
+                    .visible(chip_alpha)
+                    .onClose([chip_alpha]() { chip_alpha.set(false); })
+                    .onClick([]() { TraceLog(LOG_INFO, "chip alpha clicked"); }),
+                rayui::Chip("beta",{ .fontSize = 32.0 })
+                    .visible(chip_beta)
+                    .onClose([chip_beta]() { chip_beta.set(false); }),
+                rayui::Chip("gamma",{ .fontSize = 32.0 })
+                    .visible(chip_gamma)
+                    .onClose([chip_gamma]() { chip_gamma.set(false); }),
+                rayui::Chip("readonly",{ .fontSize = 32.0, .closeable = false })
+            }),
+
+            rayui::Button("Restore all chips",{ .padding = 16.0 })
+                .onClick([chip_alpha, chip_beta, chip_gamma]() {
+                    chip_alpha.set(true);
+                    chip_beta.set(true);
+                    chip_gamma.set(true);
+                }),
+
+            rayui::Divider(),
+
+            rayui::Label("Rating",{ .fontSize = 40.0, .color = LIGHTGRAY }),
+            rayui::Rating(likes,{ .starSize = 60.0 }),
+            rayui::Label(rayui::fmt("{} / 5 stars", likes),
+                { .fontSize = 28.0, .color = GRAY }),
+
+            rayui::Divider(),
+
+            rayui::Label("Link",{ .fontSize = 40.0, .color = LIGHTGRAY }),
+            rayui::HStack({ .spacing = 32.0, .alignment = rayui::Align::Center },{
+                rayui::Link("Open raylib.com",{ .fontSize = 34.0 })
+                    .onClick([]() { OpenURL("https://www.raylib.com/"); }),
+                rayui::Link("Log a message",{ .fontSize = 34.0 })
+                    .onClick([]() { TraceLog(LOG_INFO, "link clicked"); })
+            }),
+
+            rayui::Divider(),
+
+            rayui::Label("Grid (3 columns)",{ .fontSize = 40.0, .color = LIGHTGRAY }),
+            rayui::Grid({ .columns = 3, .spacingX = 16.0, .spacingY = 16.0,
+                          .width = 800.0, .height = 260.0 },{
+                rayui::Button("A",{ .fontSize = 32.0 }),
+                rayui::Button("B",{ .fontSize = 32.0 }),
+                rayui::Button("C",{ .fontSize = 32.0 }),
+                rayui::Button("D",{ .fontSize = 32.0 }),
+                rayui::Button("E",{ .fontSize = 32.0 }),
+                rayui::Button("F",{ .fontSize = 32.0 })
+            })
+            }));
+
+        // -------- Inputs (NumberInput / fmt) --------
+        auto inputs_page = rayui::ScrollView({ .width = 1400.0, .height = 860.0 },
+            rayui::VStack({ .spacing = 40.0, .alignment = rayui::Align::Center }, {
+
+                rayui::Label("Numeric inputs & formatted text",{ .fontSize = 72.0, .color = WHITE }),
+
+                rayui::Label("NumberInput (integer)",{ .fontSize = 40.0, .color = LIGHTGRAY }),
+                rayui::HStack({ .spacing = 24.0, .alignment = rayui::Align::Center },{
+                    rayui::NumberInput(quantity,{
+                        .width = 240.0,
+                        .step = 1.0,
+                        .min = 0.0,
+                        .max = 999.0
+                    }),
+                    rayui::Label(rayui::fmt("Quantity: {}", quantity),{ .fontSize = 28.0, .color = GRAY })
+                }),
+
+                rayui::Divider(),
+
+                rayui::Label("NumberInput (decimal, step 0.25)",{ .fontSize = 40.0, .color = LIGHTGRAY }),
+                rayui::HStack({ .spacing = 24.0, .alignment = rayui::Align::Center },{
+                    rayui::NumberInput(price,{
+                        .width = 260.0,
+                        .step = 0.25,
+                        .min = 0.0,
+                        .max = 999.99,
+                        .decimals = 2
+                    }),
+                    rayui::Label(rayui::fmt("Price: ${}", price),{ .fontSize = 28.0, .color = GRAY })
+                }),
+
+                rayui::Divider(),
+
+                rayui::Label("fmt() with multiple args",{ .fontSize = 40.0, .color = LIGHTGRAY }),
+                rayui::Label(
+                    rayui::fmt("You have {} item{} in the cart, total ${}",
+                        quantity, "s", price),
+                    { .fontSize = 30.0, .color = WHITE }),
+
+                rayui::Label(
+                    rayui::fmt("Overlay opacity: {} ({{literal braces}} work too)", opacity_val),
+                    { .fontSize = 26.0, .color = GRAY })
+                }));
+
+            // -------- List (ForEach) --------
+            auto list_page = rayui::ScrollView({ .width = 1400.0, .height = 860.0 },
+                rayui::VStack({ .spacing = 32.0, .alignment = rayui::Align::Center }, {
+
+                    rayui::Label("Reactive list (ForEach)",{ .fontSize = 72.0, .color = WHITE }),
+                    rayui::Label("The list below re-renders whenever the vector state changes.",
+                        { .fontSize = 26.0, .color = GRAY }),
+
+                    rayui::HStack({ .spacing = 12.0, .alignment = rayui::Align::Center },{
+                        rayui::Button("Add item",{ .padding = 14.0 })
+                            .onClick([items]() {
+                                auto v = items.get();
+                                v.push_back("Item " + std::to_string(v.size() + 1));
+                                items.set(v);
+                            }),
+                        rayui::Button("Remove last",{ .padding = 14.0 })
+                            .onClick([items]() {
+                                auto v = items.get();
+                                if (!v.empty()) { v.pop_back(); items.set(v); }
+                            }),
+                        rayui::Button("Reverse",{ .padding = 14.0 })
+                            .onClick([items]() {
+                                auto v = items.get();
+                                std::reverse(v.begin(), v.end());
+                                items.set(v);
+                            })
+                    }),
+
+                    rayui::Panel({ .padding = 16.0, .backgroundColor = { 40, 40, 50, 255 }, .cornerRadius = 12.0,
+                                   .width = 600.0 },{
+                        rayui::ForEach(items, [](const std::string& item) {
+                            return rayui::HStack({ .spacing = 12.0, .alignment = rayui::Align::Center },{
+                                rayui::Circle(5, BLUE),
+                                rayui::Label(item,{ .fontSize = 30.0, .color = WHITE })
+                            });
+                        },{ .spacing = 10.0 })
+                    })
+                    }));
+
+                // -------- Table --------
+                auto table_page = rayui::ScrollView({ .width = 1400.0, .height = 860.0 },
+                    rayui::VStack({ .spacing = 32.0, .alignment = rayui::Align::Center }, {
+
+                        rayui::Label("Table",{ .fontSize = 72.0, .color = WHITE }),
+                        rayui::Label("Scrollable, striped, selectable. Sticky header. Right-align numeric columns.",
+                            { .fontSize = 26.0, .color = GRAY }),
+
+                        rayui::Table(
+                            {
+                                rayui::Column("Name",{ .width = 300.0 }),
+                                rayui::Column("Category",{ .width = 200.0 }),
+                                rayui::Column("Size",{ .width = 140.0, .align = rayui::Align::End }),
+                                rayui::Column("Modified",{ .flex = 1.0 })
+                            },
+                            {
+                                { { "src/main.cpp", "Source", "12.4 KB", "2 minutes ago" } },
+                                { { "src/rayui.hpp", "Source", "184 KB", "1 hour ago" } },
+                                { { "examples/demo", "Example", "24 KB", "3 hours ago" } },
+                                { { "assets/checker.png", "Image", "8.2 KB", "yesterday" } },
+                                { { "build/main.exe", "Binary", "1.2 MB", "5 minutes ago" } },
+                                { { "README.md", "Doc", "4 KB", "2 weeks ago" } },
+                                { { "LICENSE", "Doc", "1 KB", "3 months ago" } },
+                                { { "docs/guide.md", "Doc", "32 KB", "1 month ago" } },
+                                { { "docs/api.md", "Doc", "48 KB", "1 month ago" } },
+                                { { "tests/rayui_test.cpp", "Test", "56 KB", "5 days ago" } },
+                                { { "tests/fixtures.json", "Test", "12 KB", "5 days ago" } },
+                                { { "scripts/build.py", "Script", "3 KB", "2 weeks ago" } },
+                                { { "scripts/deploy.sh", "Script", "1.5 KB", "2 weeks ago" } },
+                                { { ".gitignore", "Config", "0.2 KB", "3 months ago" } },
+                                { { "CMakeLists.txt", "Config", "2 KB", "1 week ago" } },
+                                { { "Makefile", "Config", "1 KB", "1 week ago" } },
+                                { { "CHANGELOG.md", "Doc", "6 KB", "3 days ago" } },
+                                { { "CONTRIBUTING.md", "Doc", "5 KB", "1 month ago" } },
+                                { { "package-lock.json", "Config", "128 KB", "2 days ago" } },
+                                { { "package.json", "Config", "1 KB", "2 days ago" } }
+                            },
+                            { .width = 1000.0, .height = 480.0 })
+                        .onRowClick([](int row) { TraceLog(LOG_INFO, "row %d clicked", row); })
+                        }));
+
+                    // -------- Shapes --------
+                    auto shapes_page = rayui::ScrollView({ .width = 1400.0, .height = 860.0 },
+                        rayui::VStack({ .spacing = 32.0, .alignment = rayui::Align::Center }, {
+
+                            rayui::Label("Shape builder",{ .fontSize = 72.0, .color = WHITE }),
+                            rayui::Label("Nothing here has a dedicated widget class - all built with rayui::Rect / Circle / Outline / Custom",
+                                { .fontSize = 26.0, .color = GRAY }),
+
+                            rayui::Label("Rect",{ .fontSize = 40.0, .color = LIGHTGRAY }),
+                            rayui::HStack({ .spacing = 16.0, .alignment = rayui::Align::Center },{
+                                rayui::Rect(80.0, 80.0, SKYBLUE),
+                                rayui::Rect(80.0, 80.0, ORANGE, 16.0),
+                                rayui::Rect(160.0, 80.0, DARKGREEN, 40.0),
+                                rayui::Rect(80.0, 80.0, PINK)
+                                    .onClick([]() { rayui::toast("Rect clicked",{ .level = rayui::Toast_Level::Info }); })
+                            }),
+
+                            rayui::Divider(),
+
+                            rayui::Label("Circle",{ .fontSize = 40.0, .color = LIGHTGRAY }),
+                            rayui::HStack({ .spacing = 16.0, .alignment = rayui::Align::Center },{
+                                rayui::Circle(30.0, RED),
+                                rayui::Circle(50.0, YELLOW),
+                                rayui::Circle(70.0, PURPLE),
+                                rayui::Circle(40.0, LIME)
+                                    .onClick([]() { rayui::toast("Circle tapped",{ .level = rayui::Toast_Level::Success }); })
+                            }),
+
+                            rayui::Divider(),
+
+                            rayui::Label("Outline",{ .fontSize = 40.0, .color = LIGHTGRAY }),
+                            rayui::HStack({ .spacing = 16.0, .alignment = rayui::Align::Center },{
+                                rayui::Outline(160.0, 80.0, WHITE, 2.0),
+                                rayui::Outline(160.0, 80.0, SKYBLUE, 6.0),
+                                rayui::Outline(200.0, 80.0, ORANGE, 4.0)
+                            }),
+
+                            rayui::Divider(),
+
+                            rayui::Label("Custom (arbitrary draw callback)",{ .fontSize = 40.0, .color = LIGHTGRAY }),
+                            rayui::Custom({ .width = 600.0, .height = 140.0 }, [](const auto& r) {
+                                static const float heights[] = { 0.2f, 0.5f, 0.8f, 0.4f, 0.9f, 0.3f, 0.6f, 0.7f, 0.45f, 0.85f };
+                                const int count = static_cast<int>(sizeof(heights) / sizeof(heights[0]));
+                                const double bar_width = r.width / (count * 1.5);
+
+                                for (int i = 0; i < count; ++i) {
+                                    double h = r.height * heights[i];
+                                    double x = r.x + i * bar_width * 1.5;
+                                    double y = r.y + r.height - h;
+                                    rayui::mesh::draw(
+                                        rayui::mesh::make_rect({ x, y, bar_width, h }, 4.0),
+                                        Fade(SKYBLUE, 0.6f + 0.4f * heights[i]));
+                                }
+                            })
+                            }));
+
+                        // -------- Layout --------
+                        auto layout_page = rayui::ScrollView({ .width = 1400.0, .height = 860.0 },
+                            rayui::VStack({ .spacing = 40.0, .alignment = rayui::Align::Center }, {
+
+                                rayui::Label("Layout extras",{ .fontSize = 72.0, .color = WHITE }),
+
+                                rayui::Label("Wrap (flows chips onto new rows automatically)",{ .fontSize = 40.0, .color = LIGHTGRAY }),
+                                rayui::Wrap({ .spacingX = 10.0, .spacingY = 10.0, .width = 900.0 },{
+                                    rayui::Chip("alpha",{ .fontSize = 28.0, .closeable = false }),
+                                    rayui::Chip("beta",{ .fontSize = 28.0, .closeable = false }),
+                                    rayui::Chip("gamma",{ .fontSize = 28.0, .closeable = false }),
+                                    rayui::Chip("delta",{ .fontSize = 28.0, .closeable = false }),
+                                    rayui::Chip("epsilon",{ .fontSize = 28.0, .closeable = false }),
+                                    rayui::Chip("zeta",{ .fontSize = 28.0, .closeable = false }),
+                                    rayui::Chip("eta",{ .fontSize = 28.0, .closeable = false }),
+                                    rayui::Chip("theta",{ .fontSize = 28.0, .closeable = false })
+                                }),
+
+                                rayui::Divider(),
+
+                                rayui::Label("Reveal (animated show / hide)",{ .fontSize = 40.0, .color = LIGHTGRAY }),
+                                rayui::HStack({ .spacing = 16.0, .alignment = rayui::Align::Center },{
+                                    rayui::Button("Toggle reveal",{ .padding = 16.0 })
+                                        .onClick([shape_reveal]() { shape_reveal.set(!shape_reveal.get()); }),
+
+                                    rayui::Reveal(shape_reveal,
+                                        rayui::Rect(240.0, 80.0, SKYBLUE, 16.0),
+                                        { .enterTime = 0.3, .exitTime = 0.2, .enterOffsetY = 16.0, .exitOffsetY = -16.0 })
+                                }),
+
+                                rayui::Divider(),
+
+                                rayui::Label("Accordion",{ .fontSize = 40.0, .color = LIGHTGRAY }),
+                                rayui::Accordion(accordion_section,{
+                                    rayui::AccordionItem("Account",
+                                        rayui::VStack({ .spacing = 10.0, .alignment = rayui::Align::Start },{
+                                            rayui::Label("Change password",{ .fontSize = 30.0, .color = LIGHTGRAY }),
+                                            rayui::Label("Two-factor authentication",{ .fontSize = 30.0, .color = LIGHTGRAY })
+                                        })),
+                                    rayui::AccordionItem("Appearance",
+                                        rayui::VStack({ .spacing = 10.0, .alignment = rayui::Align::Start },{
+                                            rayui::Label("Theme: dark",{ .fontSize = 30.0, .color = LIGHTGRAY }),
+                                            rayui::Label("Compact mode",{ .fontSize = 30.0, .color = LIGHTGRAY })
+                                        })),
+                                    rayui::AccordionItem("Notifications",
+                                        rayui::VStack({ .spacing = 10.0, .alignment = rayui::Align::Start },{
+                                            rayui::Label("Email",{ .fontSize = 30.0, .color = LIGHTGRAY }),
+                                            rayui::Label("Push",{ .fontSize = 30.0, .color = LIGHTGRAY })
+                                        }))
+                                    },
+                                    { .fontSize = 40.0, .gap = 8.0, .animateTime = 0.22, .width = 900.0 }),
+
+                                rayui::Divider(),
+
+                                rayui::Label("Tree view",{ .fontSize = 40.0, .color = LIGHTGRAY }),
+                                rayui::TreeView({
+                                    rayui::TreeNode("src",{
+                                        rayui::TreeNode("main.cpp"),
+                                        rayui::TreeNode("utils",{
+                                            rayui::TreeNode("utils.hpp"),
+                                            rayui::TreeNode("utils.cpp")
+                                        })
+                                    }),
+                                    rayui::TreeNode("README.md")
+                                },{
+                                    .fontSize = 30.0,
+                                    .width = 600.0,
+                                    .height = 300.0,
+                                    .defaultExpanded = true
+                                })
+                                .onSelect([tree_selection](const std::vector<int>& path) {
+                                    std::string s = "Selected path:";
+                                    for (int i : path) s += " " + std::to_string(i);
+                                    tree_selection.set(s);
+                                }),
+
+                                rayui::Label(rayui::fmt("{}", tree_selection),{ .fontSize = 28.0, .color = GRAY })
+                                }));
+
+                            // -------- Overlays --------
+                            auto overlays_page = rayui::ScrollView({ .width = 1400.0, .height = 860.0 },
+                                rayui::VStack({ .spacing = 32.0, .alignment = rayui::Align::Center, .justify = rayui::Align::Center }, {
+
+                                rayui::Label("Overlays",{ .fontSize = 72.0, .color = WHITE }),
+
+                                rayui::Label("Try tabbing through the buttons below to see focus rings.",{ .fontSize = 26.0, .color = GRAY }),
+
+                                rayui::Button("Open modal",{ .padding = 20.0 })
+                                    .onClick([show_modal]() { show_modal.set(true); }),
+
+                                rayui::Divider(),
+
+                                rayui::Label("Popover",{ .fontSize = 40.0, .color = LIGHTGRAY }),
+                                rayui::Popover(popover_open,
+                                    rayui::Button("Open popover",{ .padding = 20.0 })
+                                        .onClick([popover_open]() { popover_open.set(!popover_open.get()); }),
+                                    rayui::VStack({ .spacing = 12.0, .alignment = rayui::Align::Start },{
+                                        rayui::Label("Floating content",{ .fontSize = 30.0, .color = WHITE }),
+                                        rayui::Button("Close",{ .padding = 12.0 })
+                                            .onClick([popover_open]() { popover_open.set(false); })
+                                    }),
+                                    { .side = rayui::Side::Bottom, .gap = 8.0, .padding = 16.0 }),
+
+                                rayui::Divider(),
+
+                                rayui::Label("Context menu (right-click the box)",{ .fontSize = 40.0, .color = LIGHTGRAY }),
+                                rayui::ContextMenu(context_choice,
+                                    { "Cut", "Copy", "Paste", "Delete" },
+                                    rayui::Rect(420.0, 100.0,{ 55, 55, 70, 255 }, 12.0),
+                                    { .fontSize = 30.0, .padding = 12.0, .rowPadding = 10.0 }),
+
+                                rayui::Label(
+                                    rayui::fmt("Selected: {}", context_choice),
+                                    { .fontSize = 28.0, .color = GRAY }),
+
+                                rayui::Divider(),
+
+                                rayui::Label("Toasts",{ .fontSize = 40.0, .color = LIGHTGRAY }),
+                                rayui::HStack({ .spacing = 12.0, .alignment = rayui::Align::Center },{
+                                    rayui::Button("Info",{ .padding = 16.0 })
+                                        .onClick([]() { rayui::toast("This is an information message.",{ .level = rayui::Toast_Level::Info }); }),
+                                    rayui::Button("Success",{ .padding = 16.0 })
+                                        .onClick([]() { rayui::toast("Saved successfully.",{ .level = rayui::Toast_Level::Success }); }),
+                                    rayui::Button("Warning",{ .padding = 16.0 })
+                                        .onClick([]() { rayui::toast("Low disk space.",{ .level = rayui::Toast_Level::Warning }); }),
+                                    rayui::Button("Error",{ .padding = 16.0 })
+                                        .onClick([]() { rayui::toast("Something went wrong.",{ .level = rayui::Toast_Level::Error, .duration = 5.0 }); })
+                                })
+                                    }));
+
+                                // -------- Hotkeys & Polish --------
+                                // Long list of rows for the scrollbar fade demo
+                                std::vector<rayui::Element> fade_rows;
+                                for (int i = 1; i <= 25; ++i) {
+                                    fade_rows.push_back(rayui::HStack({ .spacing = 14.0, .alignment = rayui::Align::Center }, {
+                                        rayui::Badge(std::to_string(i),{ .fontSize = 22.0, .paddingX = 12.0, .paddingY = 4.0,
+                                                                          .backgroundColor = { 60, 100, 180, 255 } }),
+                                        rayui::Label("Row " + std::to_string(i) + ": scroll this box, then move the mouse away",
+                                            { .fontSize = 24.0, .color = LIGHTGRAY })
+                                        }));
+                                }
+
+                                auto fade_demo = rayui::ScrollView({
+                                    .width = 900.0,
+                                    .height = 280.0,
+                                    .scrollbarWidth = 12.0,
+                                    .scrollbarMinWidth = 3.0,
+                                    .scrollbarFadeTime = 0.6,
+                                    .scrollbarIdleTime = 1.0
+                                    }, rayui::VStack({ .spacing = 8.0 }, std::move(fade_rows)));
+
+                                auto hotkeys_page = rayui::ScrollView({ .width = 1400.0, .height = 860.0 },
+                                    rayui::VStack({ .spacing = 40.0, .alignment = rayui::Align::Center }, {
+
+                                        rayui::Label("Hotkeys & Polish",{ .fontSize = 72.0, .color = WHITE }),
+                                        rayui::Label("The newest additions: global hotkeys, fade-to-line scrollbars, and drop shadows on every overlay",
+                                            { .fontSize = 26.0, .color = GRAY }),
+
+                                            // ---- Hotkeys ----
+                                            rayui::Label("Global hotkeys",{ .fontSize = 40.0, .color = LIGHTGRAY }),
+                                            rayui::Label("These work regardless of which tab or widget has focus. Try them right now:",
+                                                { .fontSize = 26.0, .color = GRAY }),
+
+                                            rayui::Panel({
+                                                .padding = 24.0,
+                                                .backgroundColor = { 40, 40, 50, 255 },
+                                                .cornerRadius = 12.0,
+                                                .width = 720.0
+                                            },{
+                                                rayui::VStack({ .spacing = 16.0, .alignment = rayui::Align::Start },{
+                                                    rayui::HStack({ .spacing = 20.0, .alignment = rayui::Align::Center },{
+                                                        rayui::Badge("Ctrl + S",{ .fontSize = 26.0, .paddingX = 16.0, .paddingY = 8.0,
+                                                                                    .backgroundColor = { 60, 100, 180, 255 } }),
+                                                        rayui::Label("Save",{ .fontSize = 30.0, .color = LIGHTGRAY })
+                                                    }),
+                                                    rayui::HStack({ .spacing = 20.0, .alignment = rayui::Align::Center },{
+                                                        rayui::Badge("Ctrl + Shift + S",{ .fontSize = 26.0, .paddingX = 16.0, .paddingY = 8.0,
+                                                                                           .backgroundColor = { 60, 100, 180, 255 } }),
+                                                        rayui::Label("Save As...",{ .fontSize = 30.0, .color = LIGHTGRAY })
+                                                    }),
+                                                    rayui::HStack({ .spacing = 20.0, .alignment = rayui::Align::Center },{
+                                                        rayui::Badge("Ctrl + O",{ .fontSize = 26.0, .paddingX = 16.0, .paddingY = 8.0,
+                                                                                    .backgroundColor = { 60, 100, 180, 255 } }),
+                                                        rayui::Label("Open file",{ .fontSize = 30.0, .color = LIGHTGRAY })
+                                                    }),
+                                                    rayui::HStack({ .spacing = 20.0, .alignment = rayui::Align::Center },{
+                                                        rayui::Badge("Ctrl + N",{ .fontSize = 26.0, .paddingX = 16.0, .paddingY = 8.0,
+                                                                                    .backgroundColor = { 60, 100, 180, 255 } }),
+                                                        rayui::Label("New file",{ .fontSize = 30.0, .color = LIGHTGRAY })
+                                                    }),
+                                                    rayui::HStack({ .spacing = 20.0, .alignment = rayui::Align::Center },{
+                                                        rayui::Badge("F1",{ .fontSize = 26.0, .paddingX = 16.0, .paddingY = 8.0,
+                                                                             .backgroundColor = { 60, 100, 180, 255 } }),
+                                                        rayui::Label("Help",{ .fontSize = 30.0, .color = LIGHTGRAY })
+                                                    }),
+                                                    rayui::HStack({ .spacing = 20.0, .alignment = rayui::Align::Center },{
+                                                        rayui::Badge("F2",{ .fontSize = 26.0, .paddingX = 16.0, .paddingY = 8.0,
+                                                                             .backgroundColor = { 60, 100, 180, 255 } }),
+                                                        rayui::Label("Rename",{ .fontSize = 30.0, .color = LIGHTGRAY })
+                                                    }),
+                                                    rayui::HStack({ .spacing = 20.0, .alignment = rayui::Align::Center },{
+                                                        rayui::Badge("Ctrl + Q",{ .fontSize = 26.0, .paddingX = 16.0, .paddingY = 8.0,
+                                                                                    .backgroundColor = { 60, 100, 180, 255 } }),
+                                                        rayui::Label("Quit",{ .fontSize = 30.0, .color = LIGHTGRAY })
+                                                    })
+                                                })
+                                            }),
+
+                                            rayui::Divider(),
+
+                                        // ---- Scrollbar fade ----
+                                        rayui::Label("Scrollbar fade",{ .fontSize = 40.0, .color = LIGHTGRAY }),
+                                        rayui::Label("The bar fades to a thin line after a moment of inactivity, and expands on hover.",
+                                            { .fontSize = 26.0, .color = GRAY }),
+
+                                        fade_demo,
+
+                                        rayui::HStack({ .spacing = 12.0, .alignment = rayui::Align::Center },{
+                                            rayui::Button("Scroll to top",{ .padding = 14.0 })
+                                                .onClick([fade_demo]() { fade_demo->scroll_to(0.0); }),
+                                            rayui::Button("Scroll to bottom",{ .padding = 14.0 })
+                                                .onClick([fade_demo]() { fade_demo->scroll_to(1.0e9); })
+                                        }),
+
+                                        rayui::Divider(),
+
+                                        // ---- Drop shadows ----
+                                        rayui::Label("Drop shadows",{ .fontSize = 40.0, .color = LIGHTGRAY }),
+                                        rayui::Label("Every floating overlay: modal, popover, context menu, dropdown list, tooltip, toast: casts a soft shadow now.",
+                                            { .fontSize = 26.0, .color = GRAY }),
+
+                                        rayui::HStack({ .spacing = 20.0, .alignment = rayui::Align::Center },{
+
+                                            rayui::Popover(polish_popover,
+                                                rayui::Button("Open popover",{ .padding = 18.0 })
+                                                    .onClick([polish_popover]() { polish_popover.set(!polish_popover.get()); }),
+                                                rayui::VStack({ .spacing = 10.0, .alignment = rayui::Align::Start },{
+                                                    rayui::Label("Shadowed popover",{ .fontSize = 30.0, .color = WHITE }),
+                                                    rayui::Label("See the shadow?",{ .fontSize = 24.0, .color = LIGHTGRAY })
+                                                }),
+                                                { .side = rayui::Side::Bottom, .gap = 8.0, .padding = 16.0 }),
+
+                                            rayui::Button("Open modal",{ .padding = 18.0 })
+                                                .onClick([show_modal]() { show_modal.set(true); }),
+
+                                            rayui::Tooltip("Tooltips cast a shadow too",
+                                                rayui::Button("Hover me",{ .padding = 18.0 })),
+
+                                            rayui::ContextMenu(polish_menu,
+                                                { "Rename", "Duplicate", "Delete" },
+                                                rayui::Button("Right-click me",{ .padding = 18.0 }),
+                                                { .fontSize = 28.0, .padding = 12.0, .rowPadding = 10.0 })
+                                        })
+                                        }));
+
+                                    // -------- Root --------
+                                    auto modal_content = rayui::Panel({
+                                        .padding = 24.0,
+                                        .backgroundColor = { 60, 60, 72, 255 },
+                                        .cornerRadius = 16.0
+                                        }, {
+                                            rayui::VStack({ .spacing = 20.0, .alignment = rayui::Align::Center },{
+                                                rayui::Label("Confirm",{ .fontSize = 48.0, .color = WHITE }),
+                                                rayui::Label("Do you really want to do the thing?",
+                                                    { .fontSize = 30.0, .color = LIGHTGRAY, .width = 520.0 }),
+
+                                                rayui::HStack({ .spacing = 16.0, .alignment = rayui::Align::Center },{
+                                                    rayui::Button("Cancel",{ .padding = 16.0 })
+                                                        .onClick([show_modal]() { show_modal.set(false); }),
+                                                    rayui::Button("Confirm",{ .padding = 16.0 })
+                                                        .onClick([show_modal]() {
+                                                            show_modal.set(false);
+                                                            rayui::toast("Confirmed!",{ .level = rayui::Toast_Level::Success });
+                                                        })
+                                                })
+                                            })
+                                        });
+
+                                        auto root = rayui::Panel({
+                                            .padding = 60.0,
+                                            .backgroundColor = DARKGRAY
+                                            },
+    {
+        rayui::Tabs(page,{
+            rayui::Tab("Audio", audio_page),
+            rayui::Tab("Notes", notes_page),
+            rayui::Tab("Widgets", widgets_page),
+            rayui::Tab("Extras", extras_page),
+            rayui::Tab("Inputs", inputs_page),
+            rayui::Tab("List", list_page),
+            rayui::Tab("Table", table_page),
+            rayui::Tab("Shapes", shapes_page),
+            rayui::Tab("Layout", layout_page),
+            rayui::Tab("Overlays", overlays_page),
+            rayui::Tab("Hotkeys", hotkeys_page),
+            rayui::Tab("BLANK",{}),
+            rayui::Tab("BLANK 2",{})
+        }),
+
+            rayui::Modal(show_modal, modal_content,{
+                .dismissOnBackdrop = true,
+                .dismissOnEscape = true,
+                .padding = 24.0,
+                .cornerRadius = 16.0,
+                .contentWidth = 580.0,
+                .fadeTime = 0.18
+            }),
+
+            rayui::ToastHost({
+                .anchor = rayui::Anchor::BottomRight,
+                .marginX = 24.0,
+                .marginY = 24.0,
+                .gap = 12.0
+            }),
+
+            rayui::Positioned({ .anchor = rayui::Anchor::BottomRight, .x = -20.0, .y = -20.0 },
+                rayui::Label("rayui",{ .fontSize = 28.0, .color = GRAY }))
+    });
+
+    while (!WindowShouldClose()) {
+        root.update(GetMousePosition(), IsMouseButtonPressed(MOUSE_BUTTON_LEFT));
+
+        BeginDrawing();
+        ClearBackground(BLACK);
+        root.draw();
+        EndDrawing();
+    }
+
+    UnloadTexture(checker);
+    rayui::font.unload();
+    CloseWindow();
+    return 0;
+}

@@ -1,0 +1,30 @@
+{
+    "version": "2.0.0",
+    "tasks": [
+        {
+            "label": "build main",
+            "type": "shell",
+            "command": "g++",
+            "args": [
+                "-std=c++20",
+                "-g",
+                "-Wall",
+                "-Wextra",
+                "${workspaceFolder}/example/main.cpp",
+                "${workspaceFolder}/example/helpers/exe_path.cpp",
+                "-o",
+                "${workspaceFolder}/build/main.exe",
+                "-I${workspaceFolder}",
+                "-IC:/raylib/raylib/src",
+                "-LC:/raylib/raylib/src",
+                "-lraylib",
+                "-lopengl32",
+                "-lgdi32",
+                "-lwinmm"
+            ],
+            "options": { "cwd": "${workspaceFolder}" },
+            "problemMatcher": ["$gcc"],
+            "group": { "kind": "build", "isDefault": true }
+        }
+    ]
+}
