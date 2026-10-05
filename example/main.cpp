@@ -716,6 +716,7 @@ int main() {
                                             .backgroundColor = DARKGRAY
                                             },
     {
+        //Tabs does not handle to many tabs (that exceeds its size), they will just fall off the edge of the screen
         rayui::Tabs(page,{
             rayui::Tab("Audio", audio_page),
             rayui::Tab("Notes", notes_page),
@@ -727,9 +728,7 @@ int main() {
             rayui::Tab("Shapes", shapes_page),
             rayui::Tab("Layout", layout_page),
             rayui::Tab("Overlays", overlays_page),
-            rayui::Tab("Hotkeys", hotkeys_page),
-            rayui::Tab("BLANK",{}),
-            rayui::Tab("BLANK 2",{})
+            rayui::Tab("Hotkeys", hotkeys_page)
         }),
 
             rayui::Modal(show_modal, modal_content,{
