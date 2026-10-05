@@ -303,7 +303,7 @@ int main() {
 - `clear_focus() -> void`: drop keyboard focus.
 - `focus_widget(Widget*) -> void`: give focus to a widget.
 - `ease(seconds, style = Quad, direction = Out) -> tween::TweenInfo`: shorthand for a tween duration.
-- `hotkey(key, mods, callback) -> Hotkey_Handle`: register a global keyboard shortcut. Modifiers combine with `|` (see `Hotkey_Mod`). Re-registering the same key+mods replaces the previous binding.
+- `hotkey(key, mods, callback) -> Hotkey_Handle`: register a global keyboard shortcut. Modifiers combine with `|` (see `Hotkey_Mod`) and must match **exactly** — `Ctrl+S` and `Ctrl+Shift+S` are distinct bindings, and `Ctrl+S` will not fire when Shift is also held. Re-registering the same key+mods replaces the previous binding.
 - `toast(text, props = {}) -> void`: push a message onto the global toast queue.
 
 ### Containers
@@ -628,7 +628,8 @@ int main() {
   - `backgroundColor`, `textColor`
 
 - **`Toast_Props`**
-  - `level`: `Info`, `Success`, `Warning`, `Error`.
+  - `level`: `Info`, `Success`, `Warning`, `Error`. Selects a preset `*Color` below unless `color` is set explicitly.
+  - `color`: direct background override. Leave at the default (alpha 0) to use the level's preset.
   - `duration`
   - `fontSize`, `padding`, `lineHeight`, `cornerRadius`, `maxWidth`
   - `textColor`
@@ -669,5 +670,6 @@ int main() {
 - **`AUTO_SIZE`** = `-1.0`. Use it to say "size to content".
 - **One font** All text uses `rayui::font`. Load it once at startup, unload it before `CloseWindow`.
 - **Overlay queue** Popovers, dropdowns, modals, context menus, tooltips, and toasts all render on top of the whole tree. Only one popup-like widget is open at a time.
+- **Overlays consume their opening click.** When a popup (context menu, dropdown, etc.) handles a click that also triggers a state change which opens an overlay (e.g. a modal), the overlay sees the same frame's input but the click flags are already cleared — the new overlay won't be dismissed by the press that opened it.
 - **Focus navigation** Tab / Shift+Tab move focus through focusable widgets; Enter and Space activate the focused one. Escape clears focus unless a widget claims it first.
 - **Hotkeys fire after the tree** They run regardless of focus unless a focused widget explicitly consumes the key that frame (text inputs consume Escape when they blur).
