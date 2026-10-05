@@ -220,7 +220,7 @@ int main() {
   - **Methods**
     - `text() -> const std::string&`
     - `focused() -> bool`
-- **`Number_Input`**: numeric spinner with `+`/`-` buttons.
+- **`Number_Input`**: numeric text field bound to a numeric state. Typed values are clamped to `[min, max]` and optionally snapped to multiples of `step`.
   - **Methods**
     - `value() -> double`
     - `sync() -> void`: reformat the field after an external change.
@@ -516,10 +516,10 @@ int main() {
 
 - **`Number_Input_Props`**
   - `width`, `height`, `flex`
-  - `fontSize`, `padding`, `cornerRadius`, `buttonWidth`
-  - `step`, `min`, `max`, `decimals`
-  - `textColor`, `backgroundColor`
-  - `buttonColor`, `buttonHoverColor`, `buttonPressedColor`, `focusColor`
+  - `fontSize`, `padding`, `cornerRadius`
+  - `step`: `0` = no rounding; `> 0` = typed values snap to the nearest multiple of `step`.
+  - `min`, `max`, `decimals`
+  - `textColor`, `backgroundColor`, `focusColor`
 
 - **`Dropdown_Props`**
   - `placeholder`

@@ -502,16 +502,12 @@ namespace rayui {
         double fontSize = 34.0;
         double padding = 12.0;
         double cornerRadius = 10.0;
-        double buttonWidth = 52.0;
-        double step = 1.0;
+        double step = 1.0;      // 0 = no rounding, > 0 = snap typed values to multiples
         double min = -std::numeric_limits<double>::infinity();
         double max = std::numeric_limits<double>::infinity();
         int decimals = 0;
         Color textColor = theme.text;
         Color backgroundColor = theme.input;
-        Color buttonColor = theme.button;
-        Color buttonHoverColor = theme.button_hover;
-        Color buttonPressedColor = theme.button_pressed;
         Color focusColor = theme.accent;
     };
 
@@ -4262,23 +4258,14 @@ namespace rayui {
                 , m_step(props.step)
                 , m_min(props.min)
                 , m_max(props.max)
-                , m_decimals(std::max(props.decimals, 0))
-                , m_button_width(props.buttonWidth)
-                , m_corner_radius(props.cornerRadius)
-                , m_font_size(props.fontSize)
-                , m_text_color(props.textColor)
-                , m_background(props.backgroundColor)
-                , m_button_color(props.buttonColor)
-                , m_button_hover(props.buttonHoverColor)
-                , m_button_pressed(props.buttonPressedColor)
-                , m_focus_color(props.focusColor) {
+                , m_decimals(std::max(props.decimals, 0)) {
 
                 m_text_state = State<std::string>(format_value(m_get()));
 
                 Textbox_Props box_props;
                 box_props.fontSize = props.fontSize;
                 box_props.padding = props.padding;
-                box_props.cornerRadius = 0.0;
+                box_props.cornerRadius = props.cornerRadius;
                 box_props.backgroundColor = props.backgroundColor;
                 box_props.focusColor = props.focusColor;
                 box_props.textColor = props.textColor;
@@ -4297,57 +4284,29 @@ namespace rayui {
 
             void arrange(const coordinate::rect& bounds) override {
                 Widget::arrange(bounds);
-                m_mesh = mesh::make_rect(bounds, m_corner_radius);
-
-                m_minus_rect = { bounds.x, bounds.y, m_button_width, bounds.height };
-                m_plus_rect = { bounds.x + bounds.width - m_button_width, bounds.y, m_button_width, bounds.height };
-
-                const double inner_x = bounds.x + m_button_width;
-                const double inner_w = std::max(0.0, bounds.width - m_button_width * 2.0);
-                m_box->arrange({ inner_x, bounds.y, inner_w, bounds.height });
+                m_box->arrange(bounds);
             }
 
             void update(Input_State& input) override {
                 m_box->dispatch(input);
-
-                const bool over_minus = !input.consumed && m_minus_rect.contains(input.mouse);
-                const bool over_plus = !input.consumed && m_plus_rect.contains(input.mouse);
-
-                if (over_minus != m_minus_hover) m_minus_hover = over_minus;
-                if (over_plus != m_plus_hover) m_plus_hover = over_plus;
-
-                if (input.pressed && over_minus) { input.consumed = true; m_minus_pressed = true; }
-                if (input.pressed && over_plus) { input.consumed = true; m_plus_pressed = true; }
-
-                if (input.released) {
-                    if (m_minus_pressed && over_minus) step_by(-m_step);
-                    if (m_plus_pressed && over_plus) step_by(+m_step);
-                    m_minus_pressed = m_plus_pressed = false;
-                }
             }
 
             void draw() const override {
-                mesh::draw(m_mesh, m_background);
-
-                const Color minus_fill = m_minus_pressed ? m_button_pressed
-                    : (m_minus_hover ? m_button_hover : m_button_color);
-                mesh::draw(mesh::make_rect(m_minus_rect, m_corner_radius), minus_fill);
-                draw_plus_minus(m_minus_rect, -1.0);
-
-                const Color plus_fill = m_plus_pressed ? m_button_pressed
-                    : (m_plus_hover ? m_button_hover : m_button_color);
-                mesh::draw(mesh::make_rect(m_plus_rect, m_corner_radius), plus_fill);
-                draw_plus_minus(m_plus_rect, +1.0);
-
                 m_box->render();
             }
 
-            bool focusable() const override { return true; }
+            bool focusable() const override { return false; }
+
+            void collect_focusables(std::vector<Widget*>& out) override {
+                if (!is_visible() || !is_enabled()) return;
+                if (m_box) m_box->collect_focusables(out);
+            }
 
         protected:
             Size measure() const override {
-                return { fixed_width() >= 0.0 ? fixed_width() : m_box->desired().width + m_button_width * 2.0,
-                         fixed_height() >= 0.0 ? fixed_height() : m_font_size + 24.0 };
+                const Size natural = m_box->desired();
+                return { fixed_width() >= 0.0 ? fixed_width() : natural.width,
+                         fixed_height() >= 0.0 ? fixed_height() : natural.height };
             }
 
         private:
@@ -4360,15 +4319,14 @@ namespace rayui {
 
             void parse_and_set(const std::string& text) {
                 try {
-                    const double parsed = std::stod(text);
+                    double parsed = std::stod(text);
+                    if (m_step > 0.0) parsed = std::round(parsed / m_step) * m_step;
                     apply(parsed);
                 }
                 catch (...) {
                     m_text_state.set(format_value(m_get()));
                 }
             }
-
-            void step_by(double delta) { apply(m_get() + delta); }
 
             void apply(double raw) {
                 const double clamped = std::clamp(raw, m_min, m_max);
@@ -4378,43 +4336,15 @@ namespace rayui {
                 if (m_get() != before) OnChanged.Fire(m_get());
             }
 
-            void draw_plus_minus(const coordinate::rect& r, double sign) const {
-                const double cx = r.x + r.width * 0.5;
-                const double cy = r.y + r.height * 0.5;
-                const double half = std::min(r.width, r.height) * 0.18;
-                const double t = std::max(2.0, half * 0.25);
-
-                mesh::draw(mesh::make_line({ cx - half, cy }, { cx + half, cy }, t), m_text_color);
-                if (sign > 0.0) {
-                    mesh::draw(mesh::make_line({ cx, cy - half }, { cx, cy + half }, t), m_text_color);
-                }
-            }
-
             std::function<double()> m_get;
             std::function<void(double)> m_set;
             double m_step;
             double m_min;
             double m_max;
             int m_decimals;
-            double m_button_width;
-            double m_corner_radius;
-            double m_font_size;
-            Color m_text_color;
-            Color m_background;
-            Color m_button_color;
-            Color m_button_hover;
-            Color m_button_pressed;
-            Color m_focus_color;
 
             State<std::string> m_text_state;
             Ref<Textbox> m_box;
-
-            coordinate::rect m_minus_rect;
-            coordinate::rect m_plus_rect;
-            bool m_minus_hover = false;
-            bool m_plus_hover = false;
-            bool m_minus_pressed = false;
-            bool m_plus_pressed = false;
         };
         //////////////////////////////////////////////////
 
