@@ -203,9 +203,10 @@ namespace rayui {
         struct Toast_Data {
             std::string text;
             Toast_Level level = Toast_Level::Info;
+            Color color = { 60, 100, 180, 255 };
             double duration = 3.0;
             double fontSize = 30.0;
-            double padding = 10.0;      // per-side inset (was hardcoded 18)
+            double padding = 10.0;
             double lineHeight = 1.25;
             double cornerRadius = 10.0;
             double maxWidth = 480.0;

@@ -7,9 +7,15 @@
 #include <iostream>
 #include <filesystem>
 
+void set_borderless_windowed(int monitor) {
+    SetWindowSize(GetMonitorWidth(monitor), GetMonitorHeight(monitor) - 1);
+    SetWindowPosition(0, 0);
+}
+
 int main() {
-    SetConfigFlags(FLAG_WINDOW_RESIZABLE);
+    SetConfigFlags(FLAG_WINDOW_RESIZABLE | FLAG_BORDERLESS_WINDOWED_MODE | FLAG_MSAA_4X_HINT | FLAG_WINDOW_UNDECORATED);
     InitWindow(1280, 720, "Rayui Example");
+    set_borderless_windowed(GetCurrentMonitor());
     SetExitKey(KEY_NULL);
     int monitor = GetCurrentMonitor();
     SetTargetFPS(GetMonitorRefreshRate(monitor));
@@ -67,6 +73,7 @@ int main() {
     auto chip_gamma = rayui::make_state(true);
 
     auto show_modal = rayui::make_state(false);
+    auto confirm_delete_open = rayui::make_state(false);
     auto popover_open = rayui::make_state(false);
     auto context_choice = rayui::make_state(-1);
     auto accordion_section = rayui::make_state(0);
@@ -382,7 +389,7 @@ int main() {
                         rayui::VStack({ .spacing = 32.0, .alignment = rayui::Align::Center }, {
 
                             rayui::Label("Shape builder",{ .fontSize = 72.0, .color = WHITE }),
-                            rayui::Label("Nothing here has a dedicated widget class - all built with rayui::Rect / Circle / Outline / Custom",
+                            rayui::Label("All built with rayui::Rect / Circle / Outline / Custom",
                                 { .fontSize = 26.0, .color = GRAY }),
 
                             rayui::Label("Rect",{ .fontSize = 40.0, .color = LIGHTGRAY }),
@@ -528,7 +535,7 @@ int main() {
                                 rayui::Label("Popover",{ .fontSize = 40.0, .color = LIGHTGRAY }),
                                 rayui::Popover(popover_open,
                                     rayui::Button("Open popover",{ .padding = 20.0 })
-                                        .onClick([popover_open]() { popover_open.set(!popover_open.get()); }),
+                                        .onClick([popover_open]() { popover_open.toggle(); }),
                                     rayui::VStack({ .spacing = 12.0, .alignment = rayui::Align::Start },{
                                         rayui::Label("Floating content",{ .fontSize = 30.0, .color = WHITE }),
                                         rayui::Button("Close",{ .padding = 12.0 })
@@ -542,7 +549,17 @@ int main() {
                                 rayui::ContextMenu(context_choice,
                                     { "Cut", "Copy", "Paste", "Delete" },
                                     rayui::Rect(420.0, 100.0,{ 55, 55, 70, 255 }, 12.0),
-                                    { .fontSize = 30.0, .padding = 12.0, .rowPadding = 10.0 }),
+                                    { .fontSize = 30.0, .padding = 12.0, .rowPadding = 10.0 })
+                                    .onSelect([&](int idx) {
+                                        switch (idx) {
+                                        case 0: rayui::toast("Cut",{ .level = rayui::Toast_Level::Info }); break;
+                                        case 1: rayui::toast("Copy",{ .level = rayui::Toast_Level::Success }); break;
+                                        case 2: rayui::toast("Paste",{ .level = rayui::Toast_Level::Warning }); break;
+                                        case 3:
+                                            confirm_delete_open.set(true);
+                                            break;
+                                        }
+                                        }),
 
                                 rayui::Label(
                                     rayui::fmt("Selected: {}", context_choice),
@@ -691,13 +708,13 @@ int main() {
                                     // -------- Root --------
                                     auto modal_content = rayui::Panel({
                                         .padding = 24.0,
-                                        .backgroundColor = { 60, 60, 72, 255 },
+                                        .backgroundColor = { 70, 70, 70, 255 },
                                         .cornerRadius = 16.0
                                         }, {
-                                            rayui::VStack({ .spacing = 20.0, .alignment = rayui::Align::Center },{
+                                            rayui::VStack({ .spacing = 10.0, .alignment = rayui::Align::Center },{
                                                 rayui::Label("Confirm",{ .fontSize = 48.0, .color = WHITE }),
-                                                rayui::Label("Do you really want to do the thing?",
-                                                    { .fontSize = 30.0, .color = LIGHTGRAY, .width = 520.0 }),
+                                                rayui::Label("Do you really want to delete the file?",
+                                                    { .fontSize = 30.0, .color = LIGHTGRAY, .width = -100.0, .height = 80.0 }),
 
                                                 rayui::HStack({ .spacing = 16.0, .alignment = rayui::Align::Center },{
                                                     rayui::Button("Cancel",{ .padding = 16.0 })
@@ -711,44 +728,94 @@ int main() {
                                             })
                                         });
 
-                                        auto root = rayui::Panel({
-                                            .padding = 60.0,
-                                            .backgroundColor = DARKGRAY
-                                            },
+                                        auto confirm_delete_content = rayui::Panel({
+                                                .padding = 24.0,
+                                                .backgroundColor = { 60, 60, 72, 255 },
+                                                .cornerRadius = 16.0
+                                            }, {
+                                                rayui::VStack({ .spacing = 20.0, .alignment = rayui::Align::Center },{
+                                                    rayui::Label("Delete this item?",{ .fontSize = 44.0, .color = WHITE }),
+                                                    rayui::Label("This can't be undone.",
+                                                        { .fontSize = 28.0, .color = LIGHTGRAY, .width = 460.0 }),
+
+                                                    rayui::HStack({ .spacing = 16.0, .alignment = rayui::Align::Center },{
+                                                        rayui::Button("Cancel",{ .padding = 16.0 })
+                                                            .onClick([confirm_delete_open]() { confirm_delete_open.set(false); }),
+                                                        rayui::Button("Delete",{
+                                                                .padding = 16.0,
+                                                                .backgroundColor = { 190, 70, 70, 255 },
+                                                                .hoverColor = { 220, 90, 90, 255 },
+                                                                .pressedColor = { 150, 55, 55, 255 }
+                                                            })
+                                                            .onClick([confirm_delete_open]() {
+                                                                confirm_delete_open.set(false);
+                                                                rayui::toast("Deleted.",{ .level = rayui::Toast_Level::Error });
+                                                            })
+                                                    })
+                                                })
+                                            });
+
+                                            auto root = rayui::Panel({
+                                                .padding = 60.0,
+                                                .backgroundColor = DARKGRAY
+                                                },
     {
-        //Tabs does not handle to many tabs (that exceeds its size), they will just fall off the edge of the screen
-        rayui::Tabs(page,{
-            rayui::Tab("Audio", audio_page),
-            rayui::Tab("Notes", notes_page),
-            rayui::Tab("Widgets", widgets_page),
-            rayui::Tab("Extras", extras_page),
-            rayui::Tab("Inputs", inputs_page),
-            rayui::Tab("List", list_page),
-            rayui::Tab("Table", table_page),
-            rayui::Tab("Shapes", shapes_page),
-            rayui::Tab("Layout", layout_page),
-            rayui::Tab("Overlays", overlays_page),
-            rayui::Tab("Hotkeys", hotkeys_page)
-        }),
+        rayui::Positioned({ .anchor = rayui::Anchor::TopRight, .x = -20.0, .y = -30.0 },
+            rayui::Button("X",{
+                .padding = 16.0,
+                .fontSize = 80.0,
+                .backgroundColor = RED,
+                .hoverColor = { 210, 47, 62, 255 },
+                .pressedColor = { 240, 37, 55, 255 },
+                .width = 80.0,
+                .height = 80.0
+            }).onClick([&]() {
+                CloseWindow();
+            })
+        ),
 
-            rayui::Modal(show_modal, modal_content,{
-                .dismissOnBackdrop = true,
-                .dismissOnEscape = true,
-                .padding = 24.0,
-                .cornerRadius = 16.0,
-                .contentWidth = 580.0,
-                .fadeTime = 0.18
+            //Tabs does not handle to many tabs (that exceeds its size), they will just fall off the edge of the screen
+            rayui::Tabs(page,{
+                rayui::Tab("Audio", audio_page),
+                rayui::Tab("Notes", notes_page),
+                rayui::Tab("Widgets", widgets_page),
+                rayui::Tab("Extras", extras_page),
+                rayui::Tab("Inputs", inputs_page),
+                rayui::Tab("List", list_page),
+                rayui::Tab("Table", table_page),
+                rayui::Tab("Shapes", shapes_page),
+                rayui::Tab("Layout", layout_page),
+                rayui::Tab("Overlays", overlays_page),
+                rayui::Tab("Hotkeys", hotkeys_page)
             }),
 
-            rayui::ToastHost({
-                .anchor = rayui::Anchor::BottomRight,
-                .marginX = 24.0,
-                .marginY = 24.0,
-                .gap = 12.0
-            }),
+                rayui::Modal(show_modal, modal_content,{
+                    .dismissOnBackdrop = true,
+                    .dismissOnEscape = true,
+                    .padding = 24.0,
+                    .cornerRadius = 16.0,
+                    .contentWidth = 580.0,
+                    .fadeTime = 0.18
+                }),
 
-            rayui::Positioned({ .anchor = rayui::Anchor::BottomRight, .x = -20.0, .y = -20.0 },
-                rayui::Label("rayui",{ .fontSize = 28.0, .color = GRAY }))
+                rayui::Modal(confirm_delete_open, confirm_delete_content,{
+                    .dismissOnBackdrop = true,
+                    .dismissOnEscape = true,
+                    .padding = 24.0,
+                    .cornerRadius = 16.0,
+                    .contentWidth = 520.0,
+                    .fadeTime = 0.18
+                }),
+
+                rayui::ToastHost({
+                    .anchor = rayui::Anchor::BottomRight,
+                    .marginX = 24.0,
+                    .marginY = 24.0,
+                    .gap = 12.0
+                }),
+
+                rayui::Positioned({ .anchor = rayui::Anchor::BottomRight, .x = -20.0, .y = -20.0 },
+                    rayui::Label("rayui",{ .fontSize = 28.0, .color = GRAY }))
     });
 
     while (!WindowShouldClose()) {

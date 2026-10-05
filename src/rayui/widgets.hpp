@@ -230,6 +230,15 @@ namespace rayui {
 
             if (Internal::popup) Internal::popup->update_popup(input);
 
+            // A popup that took the click owns it for the rest of this frame. Clearing
+            // the button flags here prevents a widget that opens as a side effect of
+            // the click (e.g. a modal raised by a context menu item) from also seeing
+            // that same press.
+            if (input.consumed) {
+                input.pressed = false;
+                input.released = false;
+            }
+
             Internal::focus_claimed = false;
 
             widget::Widget* target = Internal::modal ? Internal::modal : m_widget.get();
@@ -918,9 +927,10 @@ namespace rayui {
 
     struct Toast_Props {
         Toast_Level level = Toast_Level::Info;
+        Color color = BLANK;   // alpha 0 = use the level's default
         double duration = 3.0;
         double fontSize = 30.0;
-        double padding = 10.0;      // was 18, this is what shrinks the toast
+        double padding = 10.0;
         double lineHeight = 1.25;
         double cornerRadius = 10.0;
         double maxWidth = 480.0;
@@ -5603,7 +5613,7 @@ namespace rayui {
                     return;
                 }
 
-                if (m_dismiss_on_backdrop && input.pressed && !m_panel_bounds.contains(input.mouse)) {
+                if (m_dismiss_on_backdrop && input.pressed && !input.consumed && !m_panel_bounds.contains(input.mouse)) {
                     m_open_state.set(false);
                     input.consumed = true;
                     return;
@@ -5958,13 +5968,8 @@ namespace rayui {
 
                     double h = static_cast<double>(lines.size()) * d->fontSize * d->lineHeight + d->padding * 2.0;
 
-                    Color c = d->level == Toast_Level::Success ? Color{ 60, 150, 90, 255 }
-                        : d->level == Toast_Level::Warning ? Color{ 200, 150, 60, 255 }
-                        : d->level == Toast_Level::Error ? Color{ 190, 70, 70, 255 }
-                    : Color{ 60, 100, 180, 255 };
-
                     entries.push_back({
-                        d->text, c, w, h,
+                        d->text, d->color, w, h,
                         d->padding, d->fontSize, d->lineHeight, d->cornerRadius,
                         d->fade.get(), std::move(lines)
                         });

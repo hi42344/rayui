@@ -8,6 +8,11 @@ namespace rayui {
         auto data = std::make_shared<detail::Toast_Data>();
         data->text = text;
         data->level = props.level;
+        data->color = (props.color.a > 0) ? props.color
+            : (props.level == Toast_Level::Success ? props.successColor
+                : props.level == Toast_Level::Warning ? props.warningColor
+                : props.level == Toast_Level::Error ? props.errorColor
+                : props.infoColor);
         data->duration = props.duration;
         data->fontSize = props.fontSize;
         data->padding = props.padding;
