@@ -396,7 +396,7 @@ namespace rayui {
             std::string pattern;
             State<std::string> target;
             std::vector<std::function<std::string()>> getters;
-            std::vector<event::ScopedConnection> connections;
+            std::list<event::ScopedConnection> connections;
             std::vector<std::shared_ptr<void>> anchors;
 
             void render() {
